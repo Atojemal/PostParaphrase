@@ -18,6 +18,7 @@ pending_password = {}  # Used by admin handler; kept here for visibility
 user_sessions = {}  # user_id -> {"text": str, "last_choice": int}
 
 
+# ...existing code...
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     /start
@@ -30,13 +31,25 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check for referral payload in /start payload (Telegram sends as argument)
     if args:
         invite_code = args[0]
-        await firebase_utils.apply_referral(user.id, invite_code)
+        try:
+            credited, inviter_id = await firebase_utils.apply_referral(user.id, invite_code)
+            if credited and inviter_id:
+                # Notify inviter about earned credits
+                try:
+                    await context.bot.send_message(
+                        chat_id=int(inviter_id),
+                        text=f"✅ You earned 20 paraphrase credits for inviting {user.username or user.full_name}."
+                    )
+                except Exception:
+                    logger.exception("Failed to notify inviter about referral credit")
+        except Exception:
+            logger.exception("Error applying referral")
 
     # Save user record in DB
     await firebase_utils.create_or_get_user(user.id, user.username, user.full_name)
 
     await update.message.reply_text("Welcome! Send your message.")
-
+# ...existing code...
 
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """

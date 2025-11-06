@@ -221,31 +221,49 @@ async def ensure_invite_code(user_id):
         return await ensure_invite_code(user_id)
 
 
+# ...existing code...
 async def apply_referral(new_user_id, invite_code):
     """
     When a new user starts with an invite code, credit the inviter with +20 paraphrase credits.
-    This function finds the inviter by invite_code, links the new user and increments inviter counters.
-    It also creates a referral record (acknowledged default False).
+    This function now:
+      - checks if the new user already exists (no credits if they do)
+      - if new, registers the user, credits the inviter once, and logs the referral (acknowledged=False)
+    Returns: (credited: bool, inviter_id: Optional[str])
     """
+    uid_new = str(new_user_id)
+
+    # If the new user already exists, do not award credits
+    new_user_doc = _firestore_client.collection("users").document(uid_new).get()
+    if new_user_doc.exists:
+        return (False, None)
+
     # Find inviter by invite_code
     q = _firestore_client.collection("users").where("invite_code", "==", invite_code).stream()
     inviter_doc = None
     for doc in q:
         inviter_doc = doc
         break
-    if inviter_doc:
-        inviter_id = inviter_doc.id
-        new_uid = str(new_user_id)
-        new_user_ref = _firestore_client.collection("users").document(new_uid)
-        new_user_ref.set({"inviter_id": inviter_id}, merge=True)
-        # Credit inviter: add 20 to paraphrase_total and increment invites
-        inviter_ref = _firestore_client.collection("users").document(inviter_id)
-        inviter_ref.update({"paraphrase_total": firestore.Increment(20), "invites": firestore.Increment(1)})
-        # Log referral event with acknowledged=False (so Try Again can pick it up)
-        _firestore_client.collection("referrals").add(
-            {"inviter_id": inviter_id, "new_user_id": new_uid, "ts": datetime.utcnow(), "acknowledged": False}
-        )
 
+    if not inviter_doc:
+        # No valid inviter found
+        return (False, None)
+
+    inviter_id = inviter_doc.id
+
+    # Create the new user's record (safe to call; will create fresh user)
+    await create_or_get_user(new_user_id)
+
+    # Credit inviter: add 20 to paraphrase_total and increment invites
+    inviter_ref = _firestore_client.collection("users").document(inviter_id)
+    inviter_ref.update({"paraphrase_total": firestore.Increment(20), "invites": firestore.Increment(1)})
+
+    # Log referral event with acknowledged=False (so Try Again can pick it up)
+    _firestore_client.collection("referrals").add(
+        {"inviter_id": inviter_id, "new_user_id": uid_new, "ts": datetime.utcnow(), "acknowledged": False}
+    )
+
+    return (True, inviter_id)
+# ...existing code...
 
 def get_admin_password_hash():
     return _admin_password_hash
