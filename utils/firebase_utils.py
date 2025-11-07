@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 
+import bcrypt
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -12,7 +13,7 @@ from utils import helpers
 logger = logging.getLogger(__name__)
 
 # Constants
-DAILY_LIMIT = 4  # per README
+DAILY_LIMIT = 20  # per README (kept as-is to avoid changing other logic)
 
 # Module-level variables set by init
 _db = None
@@ -25,8 +26,9 @@ def init_firebase_from_env():
     """
     Initialize firebase-admin using the FIREBASE_KEY env var (JSON string).
     Handles values wrapped with quotes in .env.
+    Also ensures admin password is initialized in Firestore (only once).
     """
-    global _db, _firestore_client
+    global _db, _firestore_client, _admin_password_hash
     firebase_json = os.getenv("FIREBASE_KEY")
     if not firebase_json:
         raise RuntimeError("FIREBASE_KEY not set in environment")
@@ -40,6 +42,64 @@ def init_firebase_from_env():
     firebase_admin.initialize_app(cred)
     _db = firestore.client()
     _firestore_client = _db
+
+    # Ensure admin password is persisted in Firestore (only if missing)
+    try:
+        _ensure_admin_password_in_firestore()
+    except Exception:
+        logger.exception("Failed to ensure admin password in Firestore during init")
+
+
+def _ensure_admin_password_in_firestore():
+    """
+    Synchronous helper (called during init) that:
+    - checks Firestore for an admin password hash document
+    - if missing, reads ADMIN_PASSWORD_HASH from env, hashes it if needed, and stores it
+    - updates module-level _admin_password_hash variable with the value stored in Firestore
+    """
+    global _admin_password_hash
+    try:
+        doc_ref = _firestore_client.collection("config").document("admin_password")
+        doc = doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict() or {}
+            stored_hash = data.get("hash")
+            if stored_hash:
+                _admin_password_hash = stored_hash
+                logger.info("Loaded admin password hash from Firestore")
+                return
+            # else continue to initialize from env
+        # If we reached here, no stored hash found in Firestore. Initialize from env.
+        env_hash = os.getenv("ADMIN_PASSWORD_HASH", "")
+        if not env_hash:
+            logger.warning("ADMIN_PASSWORD_HASH not set in environment; admin password will not be available until configured")
+            _admin_password_hash = ""
+            return
+
+        # If env_hash looks like a bcrypt hash (starts with $2a$/$2b$/$2y$), assume it's already hashed.
+        if isinstance(env_hash, str) and (env_hash.startswith("$2a$") or env_hash.startswith("$2b$") or env_hash.startswith("$2y$")):
+            hashed = env_hash
+            logger.info("Using bcrypt hash found in ENV for admin password")
+        else:
+            # Hash the plain-text password from env
+            try:
+                hashed = bcrypt.hashpw(env_hash.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+                logger.info("Hashed admin password from ENV and storing to Firestore")
+            except Exception:
+                logger.exception("Failed to hash ADMIN_PASSWORD_HASH from env")
+                hashed = env_hash  # fallback (not ideal) but ensures something is stored
+
+        # Store hashed value in Firestore
+        try:
+            doc_ref.set({"hash": hashed, "created_at": datetime.utcnow()})
+            _admin_password_hash = hashed
+            logger.info("Admin password hash stored in Firestore (initialized)")
+        except Exception:
+            logger.exception("Failed to store admin password hash in Firestore")
+            _admin_password_hash = hashed  # still set locally
+    except Exception:
+        logger.exception("Unexpected error initializing admin password in Firestore")
+        _admin_password_hash = os.getenv("ADMIN_PASSWORD_HASH", "")
 
 
 async def create_or_get_user(user_id, username=None, full_name=None):
@@ -221,7 +281,6 @@ async def ensure_invite_code(user_id):
         return await ensure_invite_code(user_id)
 
 
-# ...existing code...
 async def apply_referral(new_user_id, invite_code):
     """
     When a new user starts with an invite code, credit the inviter with +20 paraphrase credits.
@@ -263,9 +322,12 @@ async def apply_referral(new_user_id, invite_code):
     )
 
     return (True, inviter_id)
-# ...existing code...
+
 
 def get_admin_password_hash():
+    """
+    Return the cached admin password hash (loaded during init).
+    """
     return _admin_password_hash
 
 
@@ -303,6 +365,7 @@ async def get_paraphrases_count_last_24h():
     return count
 
 
+# Referral helper functions (unchanged)
 async def _fetch_unacknowledged_referrals(inviter_id: str):
     """
     Return list of referral document snapshots where inviter_id matches and acknowledged == False.

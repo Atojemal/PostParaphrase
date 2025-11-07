@@ -122,15 +122,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         # Reset session and ask for new message
         user_sessions.pop(user_id, None)
         await firebase_utils.clear_user_session(user_id)
-        keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("2", callback_data=json.dumps({"action": "choose", "count": 2})),
-                    InlineKeyboardButton("4", callback_data=json.dumps({"action": "choose", "count": 4})),
-                ]
-            ]
-        )
-        await query.message.reply_text("Send your new message. Then choose how many versions.", reply_markup=keyboard)
+        await query.message.reply_text("Send your new message.")
 
     elif action == "try_invite":
         """

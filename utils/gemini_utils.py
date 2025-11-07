@@ -58,7 +58,7 @@ class GeminiManager:
 
         # Model configuration
         # Keep a commonly available model; adjust if needed for your account.
-        self.model_name = "gemini-2.0-flash"
+        self.model_name = "gemini-2.0-flash-lite"
 
     async def maybe_rotate_key(self):
         """
@@ -88,19 +88,27 @@ class GeminiManager:
 
         # Apply prompt rules (multilingual, word limits)
         original_word_count = helpers.word_count(text)
-        should_shorten = original_word_count > 150
+        should_shorten = original_word_count > 180
 
         # Use an explicit separator token so parsing becomes reliable
         separator = "###PARAPHRASE_SEPARATOR###"
 
         prompt = (
-            "Paraphrase the following post without changing its original languages.\n"
-            "Some posts may contain multiple languages (for example, English and Amharic).\n"
-            "In such cases, paraphrase each section in its respective language — English parts in English, Amharic parts in Amharic.\n"
-            "Ensure that the total word count of the paraphrased version is approximately equal to the original post.\n"
+
+
+            "Paraphrase the following post carefully.\n"
+            "Your job is to rewrite the text using different wording while keeping the same meaning.\n"
+            "\n"
+            "Rules:\n"
+            "- Keep the original language."
+            "- Do NOT translate anything.\n"
+            "- Maintain emojis, formatting, line breaks, bullet points, and spacing.\n"
+            "- Keep numbers, symbols, and special characters unchanged.\n"
+            "- The paraphrased result should sound natural and have about the same length as the original.\n"
+            "- Do not remove links, usernames, or emojis.\n"
         )
         if should_shorten:
-            prompt += "Since the original message is long (>150 words), shorten the paraphrased version to around 150 words.\n"
+            prompt += "Since the original message is long (>180 words), shorten the paraphrased version to around 180 words.\n"
 
         prompt += f"\nPost:\n{text}\n\n"
         prompt += f"Provide {count} distinct paraphrased versions. Separate each version using the exact token: {separator}\n"

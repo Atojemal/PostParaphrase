@@ -1,7 +1,5 @@
 import asyncio
-import bcrypt
 import logging
-import os
 from datetime import datetime, timedelta
 
 from telegram import Update, Bot
@@ -47,19 +45,26 @@ async def catch_admin_password(update: Update, context: ContextTypes.DEFAULT_TYP
     if not awaiting_admin_password.get(user_id):
         return  # Not in password flow
 
-    # Validate password against hash in env / firebase
+    logger.info("Admin auth attempt from user_id=%s", user_id)
+
+    # Get stored hash from Firebase (initialized during startup)
     stored_hash = firebase_utils.get_admin_password_hash()
     if not stored_hash:
+        # This should not happen if init completed correctly, but handle gracefully
         await update.message.reply_text("Admin password not configured.")
         awaiting_admin_password.pop(user_id, None)
+        logger.warning("Admin auth failed: no stored password hash for user_id=%s", user_id)
         return
 
     if auth_utils.verify_password(text, stored_hash):
         # Register admin in Firebase so they don't need to re-authenticate
         await firebase_utils.register_admin(user_id, user.username or user.full_name)
         await update.message.reply_text("Authenticated as admin. You will receive daily reports.")
+        logger.info("Admin authenticated: user_id=%s", user_id)
     else:
-        await update.message.reply_text("Wrong password.")
+        await update.message.reply_text("❌ Incorrect password. Try again.")
+        logger.warning("Admin authentication failed for user_id=%s", user_id)
+
     awaiting_admin_password.pop(user_id, None)
 
 
@@ -103,4 +108,4 @@ async def daily_report_loop(application_or_bot):
         except Exception:
             logger.exception("Error in daily_report_loop")
         # Sleep 24 hours
-        await asyncio.sleep(24 * 3600)
+        await asyncio.sleep(12*3600)

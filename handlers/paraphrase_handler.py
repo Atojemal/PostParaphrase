@@ -9,7 +9,6 @@ from utils import firebase_utils, gemini_utils, helpers
 
 logger = logging.getLogger(__name__)
 
-
 async def handle_paraphrase_request(bot, user_id: int, text: str, count: int, reply_message):
     """
     Core flow for handling a paraphrase request:
@@ -28,8 +27,8 @@ async def handle_paraphrase_request(bot, user_id: int, text: str, count: int, re
     total_paraphrases = user.get("paraphrase_total", 0)
     paraphrases_today = user.get("paraphrase_today", 0)
 
-    # If user unverified and already used 10 paraphrases, send verification prompt
-    if not verified and total_paraphrases >= 10:
+    # If user unverified and already used 20 paraphrases, send verification prompt
+    if not verified and total_paraphrases >= 20:
         v_link = firebase_utils.get_verification_link()
         keyboard = InlineKeyboardMarkup(
             [[InlineKeyboardButton("Verify", url=v_link)]]
@@ -51,7 +50,6 @@ async def handle_paraphrase_request(bot, user_id: int, text: str, count: int, re
         keyboard = InlineKeyboardMarkup(
             [
                 [
-                    # switch_inline_query will open inline mode so user can pick a chat to send the prefilled invite text
                     InlineKeyboardButton("Share", switch_inline_query=share_text),
                     InlineKeyboardButton("Try Again", callback_data=json.dumps({"action": "try_invite"})),
                 ]
@@ -73,8 +71,10 @@ async def handle_paraphrase_request(bot, user_id: int, text: str, count: int, re
 
     # Send paraphrased messages; each as its own message. The last message includes Add More / New Message buttons.
     for idx, p in enumerate(paraphrases, start=1):
+        wrapped_text = f"<pre>{p}</pre>"
+        reply_markup = None
         if idx == len(paraphrases):
-            keyboard = InlineKeyboardMarkup(
+            reply_markup = InlineKeyboardMarkup(
                 [
                     [
                         InlineKeyboardButton("Add More", callback_data=json.dumps({"action": "add_more"})),
@@ -82,9 +82,7 @@ async def handle_paraphrase_request(bot, user_id: int, text: str, count: int, re
                     ]
                 ]
             )
-            await reply_message.reply_text(p, reply_markup=keyboard)
-        else:
-            await reply_message.reply_text(p)
+        await reply_message.reply_text(wrapped_text, parse_mode='HTML', reply_markup=reply_markup)
 
     # Update counters in Firebase and global event log
     await firebase_utils.increment_paraphrases(user_id, count)
