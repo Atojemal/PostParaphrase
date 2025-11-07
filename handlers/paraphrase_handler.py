@@ -1,3 +1,4 @@
+# paraphrase_handler.py (no major changes needed, but added validation for count=1)
 import json
 import logging
 from datetime import datetime, timedelta
@@ -19,6 +20,11 @@ async def handle_paraphrase_request(bot, user_id: int, text: str, count: int, re
     """
     if not text:
         await reply_message.reply_text("No message found. Send a message first using /start.")
+        return
+
+    # Validate count (now supports 1,2,4)
+    if count not in [1, 2, 4]:
+        await reply_message.reply_text("Invalid number of paraphrases selected. Please try again.")
         return
 
     # Fetch user record

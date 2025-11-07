@@ -1,3 +1,4 @@
+# user_handler.py (updated for word count-based buttons)
 import json
 import logging
 import os
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 pending_password = {}  # Used by admin handler; kept here for visibility
 # In-memory session for last message and last choice
 user_sessions = {}  # user_id -> {"text": str, "last_choice": int}
-
 
 # ...existing code...
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,31 +55,43 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle regular text messages:
     - If user was in admin password flow, delegate to admin handler
-    - Otherwise treat it as the message to paraphrase and ask how many versions (2 or 4)
+    - Otherwise treat it as the message to paraphrase and ask how many versions based on word count
     """
     user = update.effective_user
     text = update.message.text.strip()
     user_id = user.id
 
+    # Calculate word count
+    word_count = helpers.word_count(text)
+
+    # If exceeds 175 words, ask to shorten
+    if word_count > 175:
+        await update.message.reply_text("Your message exceeds 175 words. Please send a shorter message to lower the input message.")
+        return
+
     # Save the original message in session (in-memory and DB)
     user_sessions[user_id] = {"text": text, "last_choice": None}
     await firebase_utils.save_user_session(user_id, text)
 
-    # Ask how many paraphrases
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("2", callback_data=json.dumps({"action": "choose", "count": 2})),
-                InlineKeyboardButton("4", callback_data=json.dumps({"action": "choose", "count": 4})),
-            ]
+    # Determine buttons based on word count
+    if word_count <= 75:
+        buttons = [
+            InlineKeyboardButton("2", callback_data=json.dumps({"action": "choose", "count": 2})),
+            InlineKeyboardButton("4", callback_data=json.dumps({"action": "choose", "count": 4})),
         ]
-    )
+    else:  # 76 to 175 words
+        buttons = [
+            InlineKeyboardButton("1", callback_data=json.dumps({"action": "choose", "count": 1})),
+            InlineKeyboardButton("2", callback_data=json.dumps({"action": "choose", "count": 2})),
+        ]
+
+    keyboard = InlineKeyboardMarkup([buttons])
     await update.message.reply_text("How many paraphrased versions do you want?", reply_markup=keyboard)
 
 
 async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Central callback query handler (2 / 4 / Add More / New Message / Try Again)
+    Central callback query handler (1 / 2 / 4 / Add More / New Message / Try Again)
     """
     query = update.callback_query
     await query.answer()
@@ -114,8 +126,13 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             # Try DB
             session = await firebase_utils.get_user_session(user_id)
         count = session.get("last_choice", 2)
+        # Adjust count based on word count for consistency
+        text = session.get("text", "")
+        word_count = helpers.word_count(text)
+        if word_count > 75:
+            count = min(count, 2)  # Limit to 1 or 2 for >75 words
         await paraphrase_handler.handle_paraphrase_request(
-            context.bot, user_id, session.get("text"), count, query.message
+            context.bot, user_id, text, count, query.message
         )
 
     elif action == "new_message":

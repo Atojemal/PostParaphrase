@@ -1,3 +1,4 @@
+# gemini_utils.py (removed shortening logic)
 import asyncio
 import json
 import logging
@@ -12,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 # Manager singleton
 gemini_manager = None
-
 
 def init_gemini_manager_from_env():
     """
@@ -86,16 +86,10 @@ class GeminiManager:
             logger.error("No Gemini API keys available")
             return [helpers.fallback_paraphrase(text, idx + 1) for idx in range(count)]
 
-        # Apply prompt rules (multilingual, word limits)
-        original_word_count = helpers.word_count(text)
-        should_shorten = original_word_count > 180
-
         # Use an explicit separator token so parsing becomes reliable
         separator = "###PARAPHRASE_SEPARATOR###"
 
         prompt = (
-
-
             "Paraphrase the following post carefully.\n"
             "Your job is to rewrite the text using different wording while keeping the same meaning.\n"
             "\n"
@@ -106,13 +100,10 @@ class GeminiManager:
             "- Keep numbers, symbols, and special characters unchanged.\n"
             "- The paraphrased result should sound natural and have about the same length as the original.\n"
             "- Do not remove links, usernames, or emojis.\n"
+            f"\nPost:\n{text}\n\n"
+            f"Provide {count} distinct paraphrased versions. Separate each version using the exact token: {separator}\n"
+            "Do not add extra numbering or commentary outside the paraphrased text blocks."
         )
-        if should_shorten:
-            prompt += "Since the original message is long (>180 words), shorten the paraphrased version to around 180 words.\n"
-
-        prompt += f"\nPost:\n{text}\n\n"
-        prompt += f"Provide {count} distinct paraphrased versions. Separate each version using the exact token: {separator}\n"
-        prompt += "Do not add extra numbering or commentary outside the paraphrased text blocks."
 
         # Run the blocking call in executor
         loop = asyncio.get_running_loop()
