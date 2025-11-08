@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from flask import Flask
 from telegram import Bot
 from telegram import Update as TgUpdate
+from telegram.error import Conflict
 
 # Local modules (handlers expect telegram.Update and a simple context with .bot and .args)
 from handlers import user_handler, admin_handler
