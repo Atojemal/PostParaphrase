@@ -62,12 +62,8 @@ async def periodic_tasks(bot: Bot):
         await asyncio.sleep(CLEANUP_INTERVAL)
 
 
+# ...existing code...
 async def poll_updates_loop(bot: Bot):
-    """
-    A simple long-polling loop using Bot.get_updates executed directly as coroutine.
-    This avoids depending on the python-telegram-bot Application/Updater API surface,
-    which can vary between installations.
-    """
     logger.info("Starting updates poll loop")
     offset = None
 
@@ -79,53 +75,34 @@ async def poll_updates_loop(bot: Bot):
 
     while True:
         try:
-            # Bot.get_updates is an async coroutine in some installs; await it directly.
             updates = await bot.get_updates(offset=offset, timeout=GET_UPDATES_TIMEOUT)
             for upd in updates:
                 if upd.update_id:
                     offset = upd.update_id + 1
                 try:
                     context = SimpleContext(bot)
-
-                    # Messages
-                    if getattr(upd, "message", None):
-                        msg = upd.message
-                        text = (msg.text or "").strip()
-
-                        # If /start command (may have payload)
-                        if text.startswith("/start"):
-                            parts = text.split(maxsplit=1)
-                            if len(parts) > 1:
-                                context.args = [parts[1]]
-                            else:
-                                context.args = []
-                            asyncio.create_task(user_handler.start_command(upd, context))
-                            asyncio.create_task(admin_handler.catch_admin_password(upd, context))
-                            continue
-
-                        # If exact admin unique string as plain message or /<unique>
-                        if ADMIN_UNIQUE_STRING and (text == ADMIN_UNIQUE_STRING or text == f"/{ADMIN_UNIQUE_STRING}"):
-                            asyncio.create_task(admin_handler.admin_entry(upd, context))
-                            continue
-
-                        # Normal text -> user text handler and also admin password catcher
-                        asyncio.create_task(user_handler.text_message(upd, context))
-                        asyncio.create_task(admin_handler.catch_admin_password(upd, context))
-                        continue
-
-                    # Callback queries (inline buttons)
-                    if getattr(upd, "callback_query", None):
-                        asyncio.create_task(user_handler.callback_query_handler(upd, context))
-                        continue
-
-                    # Ignore other update types for now
+                    # ...existing code...
                 except Exception:
                     pass
+        except Conflict:
+            # Another getUpdates/webhook conflict — attempt to clear webhook and retry
+            logger.warning("Conflict: another getUpdates/webhook exists. Deleting webhook and retrying.")
+            try:
+                # delete_webhook may be sync or async depending on library version; try await first
+                try:
+                    await bot.delete_webhook(drop_pending_updates=True)
+                except TypeError:
+                    bot.delete_webhook(drop_pending_updates=True)
+                logger.info("Webhook deleted, resuming polling")
+            except Exception:
+                logger.exception("Failed to delete webhook after Conflict")
+            await asyncio.sleep(2)
+            continue
         except Exception:
             logger.exception("Error in poll_updates_loop; continuing")
             # small backoff
             await asyncio.sleep(2)
-
+# ...existing code...
 
 def run_flask():
     port = int(os.getenv("PORT", 5000))  # Render sets PORT env var
@@ -144,6 +121,14 @@ def main():
 
     bot = Bot(token=TELEGRAM_TOKEN)
 
+    # Ensure no webhook is set (avoid Conflict when using getUpdates)
+    try:
+        # drop_pending_updates=True clears any queued updates so the poller starts clean
+        bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Deleted existing webhook (if any) before starting long-polling")
+    except Exception:
+        logger.exception("Failed to delete webhook on startup; continuing")
+
     # Start Flask in a separate thread for Render web service
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
@@ -155,7 +140,4 @@ def main():
         logger.info("Shutting down (keyboard interrupt)")
     except Exception:
         logger.exception("Unexpected error in main")
-
-
-if __name__ == "__main__":
-    main()
+# ...existing code...

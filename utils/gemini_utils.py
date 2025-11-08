@@ -9,6 +9,10 @@ import google.generativeai as genai
 
 from utils import helpers
 
+from telegram import Bot
+from telegram import Update as TgUpdate
+from telegram.error import Conflict
+
 logger = logging.getLogger(__name__)
 
 # Manager singleton
