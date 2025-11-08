@@ -117,7 +117,7 @@ async def create_or_get_user(user_id, username=None, full_name=None):
                 "paraphrase_total": 0,
                 "paraphrase_today": 0,
                 "last_paraphrase_date": None,
-                "verified": False,
+                "verified": True,
                 "invite_code": None,
                 "inviter_id": None,
                 "invites": 0,

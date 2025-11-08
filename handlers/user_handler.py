@@ -1,4 +1,4 @@
-# user_handler.py (updated for word count-based buttons)
+# user_handler.py (updated for word count-based buttons and waiting message with logging)
 import json
 import logging
 import os
@@ -48,7 +48,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Save user record in DB
     await firebase_utils.create_or_get_user(user.id, user.username, user.full_name)
 
-    await update.message.reply_text("Welcome! Send your message.")
+    await update.message.reply_text("👋 Welcome to Post Paraphrase!\n💬 Send me any text post, and I’ll rewrite it smartly\n🔁 Keeps your meaning but avoids spam detection")
 # ...existing code...
 
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -66,7 +66,7 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # If exceeds 175 words, ask to shorten
     if word_count > 175:
-        await update.message.reply_text("Your message exceeds 175 words. Please send a shorter message to lower the input message.")
+        await update.message.reply_text("Your message is too long — please send a shorter one.")
         return
 
     # Save the original message in session (in-memory and DB)
@@ -114,9 +114,15 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         user_sessions[user_id] = session
         await firebase_utils.save_user_last_choice(user_id, count)
 
+        # Send waiting message
+        chat_id = query.message.chat_id
+        logger.info(f"Sending waiting message to chat {chat_id} for user {user_id}")
+        sent_message = await context.bot.send_message(chat_id=chat_id, text="Please wait .....")
+        logger.info(f"Waiting message sent with ID {sent_message.message_id}")
+
         # Trigger paraphrase action
         await paraphrase_handler.handle_paraphrase_request(
-            context.bot, user_id, session.get("text"), count, query.message
+            context.bot, user_id, session.get("text"), count, query.message, chat_id=chat_id, waiting_message_id=sent_message.message_id
         )
 
     elif action == "add_more":
@@ -131,8 +137,15 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         word_count = helpers.word_count(text)
         if word_count > 75:
             count = min(count, 2)  # Limit to 1 or 2 for >75 words
+
+        # Send waiting message
+        chat_id = query.message.chat_id
+        logger.info(f"Sending waiting message to chat {chat_id} for user {user_id}")
+        sent_message = await context.bot.send_message(chat_id=chat_id, text="Please wait .....")
+        logger.info(f"Waiting message sent with ID {sent_message.message_id}")
+
         await paraphrase_handler.handle_paraphrase_request(
-            context.bot, user_id, text, count, query.message
+            context.bot, user_id, text, count, query.message, chat_id=chat_id, waiting_message_id=sent_message.message_id
         )
 
     elif action == "new_message":
