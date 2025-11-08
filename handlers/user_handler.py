@@ -48,7 +48,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Save user record in DB
     await firebase_utils.create_or_get_user(user.id, user.username, user.full_name)
 
-    await update.message.reply_text("👋 Welcome to Post Paraphrase!\n💬 Send me any text post, and I’ll rewrite it smartly\n🔁 Keeps your meaning but avoids spam detection")
+    await update.message.reply_text("👋 Welcome to Post Paraphrase!\n\n💬 Send me any text post, and I’ll rewrite it smartly\n\n🔁 Keeps your meaning but avoids spam detection")
 # ...existing code...
 
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
