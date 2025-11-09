@@ -62,7 +62,7 @@ class GeminiManager:
 
         # Model configuration
         # Keep a commonly available model; adjust if needed for your account.
-        self.model_name = "gemini-2.0-flash-lite"
+        self.model_name = "gemini-2.0-flash"
 
     async def maybe_rotate_key(self):
         """
@@ -94,19 +94,16 @@ class GeminiManager:
         separator = "###PARAPHRASE_SEPARATOR###"
 
         prompt = (
-            "Paraphrase the following post carefully.\n"
-            "Your job is to rewrite the text using different wording while keeping the same meaning.\n"
-            "\n"
-            "Rules:\n"
-            "- Keep the original language."
-            "- Do NOT translate anything.\n"
-            "- Maintain emojis, formatting, line breaks, bullet points, and spacing.\n"
-            "- Keep numbers, symbols, and special characters unchanged.\n"
+            "Paraphrase the text below.\n"
+            "Keep it in the SAME language as the original.\n"
+            "Do NOT translate.\n"
+            "Only change wording, not meaning.\n"
+            "Preserve emojis, spacing, and formatting.\n"
             "- The paraphrased result should sound natural and have about the same length as the original.\n"
             "- Do not remove links, usernames, or emojis.\n"
             f"\nPost:\n{text}\n\n"
             f"Provide {count} distinct paraphrased versions. Separate each version using the exact token: {separator}\n"
-            "Do not add extra numbering or commentary outside the paraphrased text blocks."
+            "Do not add extra numbering or commentary outside the paraphrased text blocks. and keep the original language of the Post"
         )
 
         # Run the blocking call in executor
