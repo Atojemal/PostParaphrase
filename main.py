@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from flask import Flask
 import threading
+import time
 
 from telegram import Bot
 from telegram import Update as TgUpdate
@@ -151,16 +152,27 @@ def run_flask():
 
 
 def main():
-    # Initialize Firebase and Gemini manager
-    firebase_utils.init_firebase_from_env()
-    gemini_utils.init_gemini_manager_from_env()
+    # Start Flask immediately so Render can probe the web port even if other inits fail.
+    threading.Thread(target=run_flask, daemon=True).start()
+
+    # Initialize Firebase and Gemini manager but don't let failures kill the whole process.
+    try:
+        firebase_utils.init_firebase_from_env()
+    except Exception:
+        logger.exception("Failed to init Firebase from env — continuing with limited functionality.")
+
+    try:
+        gemini_utils.init_gemini_manager_from_env()
+    except Exception:
+        logger.exception("Failed to init Gemini manager — continuing with limited functionality.")
 
     if not TELEGRAM_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN not set in environment")
-        return
+        logger.warning("TELEGRAM_BOT_TOKEN not set; bot polling will not start. Flask remains running.")
+        # Keep the process alive so Render's HTTP checks succeed
+        while True:
+            time.sleep(3600)
 
     bot = Bot(token=TELEGRAM_TOKEN)
-    threading.Thread(target=run_flask, daemon=True).start()
 
     # Run asyncio event loop and start polling
     try:
@@ -168,7 +180,9 @@ def main():
     except KeyboardInterrupt:
         logger.info("Shutting down (keyboard interrupt)")
     except Exception:
-        logger.exception("Unexpected error in main")
+        logger.exception("Unexpected error in main — keeping process alive")
+        while True:
+            time.sleep(3600)
 
 
 
