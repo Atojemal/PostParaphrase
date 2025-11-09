@@ -59,6 +59,15 @@ async def periodic_tasks(bot: Bot):
             logger.exception("Error during periodic tasks")
         await asyncio.sleep(CLEANUP_INTERVAL)
 
+async def delete_webhook_if_exists(bot: Bot):
+    try:
+        webhook_info = await bot.get_webhook_info()
+        if webhook_info.url:
+            await bot.delete_webhook()
+            logger.info("Deleted existing webhook to enable polling.")
+    except Exception:
+        logger.exception("Failed to delete existing webhook")
+
 
 async def poll_updates_loop(bot: Bot):
     """
